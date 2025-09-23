@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "AltSense",
+  "version": "1.0",
+  "description": "Detecta imagens sem alt e gera automaticamente usando IA.",
+  "permissions": ["activeTab", "scripting"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "AltSense",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "icons": {
+    "16": "icon.png",
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}
