@@ -12,7 +12,7 @@ AltSense é uma extensão de navegador que detecta automaticamente imagens sem *
 
 1. Clone o repositório:
 ```bash
-git clone https://github.com/seu-usuario/AltSense.git
+git clone https://github.com/caddu57/AltSense.git
 cd AltSense
 ```
 2. Crie um ambiente virtual (opcional, mas recomendado):
