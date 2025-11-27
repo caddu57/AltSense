@@ -1,36 +1,89 @@
-async function processImages() {
-    const images = document.querySelectorAll("img:not([alt]), img[alt='']");
-    const urls = Array.from(images).map(img => img.src);
+console.log("[AltSense] Content script ativo.");
 
-    if (urls.length === 0) {
-        alert("Nenhuma imagem sem alt encontrada!");
-        return;
-    }
-
+async function gerarAltParaImagem(base64, modo) {
     try {
         const response = await fetch("http://127.0.0.1:5000/alt-text", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls })
+            body: JSON.stringify({ image: base64, mode: modo })
         });
 
-        const data = await response.json();
+        if (!response.ok) {
+            console.error("[AltSense] Backend retornou erro:", response.status);
+            return null;
+        }
 
-        images.forEach(img => {
-            const altText = data.results[img.src];
-            if (altText && !altText.startsWith("Erro")) {
-                img.alt = altText;
-                console.log(`Alt adicionado para ${img.src}: ${altText}`);
-                img.style.border = "2px solid green"; // visual feedback
-            } else {
-                console.log(`Erro ao gerar alt para ${img.src}: ${altText}`);
-                img.style.border = "2px solid orange"; // sinaliza erro
-            }
-        });
+        const json = await response.json();
+        console.log("[AltSense] Resposta do backend:", json);
+        return json.description || null;
+
     } catch (err) {
-        console.error("Erro ao conectar com backend:", err);
+        console.error("[AltSense] Erro ao conectar ao backend:", err);
+        return null;
     }
 }
 
-// Executa automaticamente quando a página é carregada
-window.addEventListener("load", processImages);
+
+// Converte imagem para base64, mas ignora imagens tainted
+function converterParaBase64(img) {
+    return new Promise((resolve, reject) => {
+        try {
+            const canvas = document.createElement("canvas");
+            canvas.width = img.naturalWidth;
+            canvas.height = img.naturalHeight;
+
+            const ctx = canvas.getContext("2d");
+
+            ctx.drawImage(img, 0, 0);
+
+            const dataUrl = canvas.toDataURL("image/jpeg");
+            resolve(dataUrl.split(",")[1]);
+
+        } catch (e) {
+            console.warn("[AltSense] Canvas tainted, ignorando imagem.");
+            reject(e);
+        }
+    });
+}
+
+async function processarPagina(modo) {
+    console.log("[AltSense] Iniciando processamento... modo:", modo);
+
+    const imagens = Array.from(document.querySelectorAll("img"));
+    console.log(`[AltSense] Encontradas ${imagens.length} imagens.`);
+
+    for (const img of imagens) {
+        try {
+            const base64 = await converterParaBase64(img)
+                .catch(() => null);
+
+            if (!base64) {
+                console.log("[AltSense] Imagem ignorada (tainted).");
+                continue;
+            }
+
+            const descricao = await gerarAltParaImagem(base64, modo);
+
+            if (descricao) {
+                img.alt = descricao;
+                console.log("[AltSense] ALT aplicado:", descricao);
+            } else {
+                console.log("[AltSense] Nenhuma descrição retornada.");
+            }
+
+        } catch (err) {
+            console.error("[AltSense] Erro ao processar imagem:", err);
+        }
+    }
+
+    console.log("[AltSense] Processamento FINALIZADO.");
+}
+
+
+// Listener principal
+chrome.runtime.onMessage.addListener((msg) => {
+    if (msg.action === "processar") {
+        console.log("[AltSense] Mensagem recebida do popup:", msg);
+        processarPagina(msg.modo || "medio");
+    }
+});

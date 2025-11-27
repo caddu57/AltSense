@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>Configurações – AltSense</title>
+  <style>
+    body {
+      width: 320px;
+      padding: 16px;
+      font-family: Arial, sans-serif;
+      background: #fafafa;
+      margin: 0;
+    }
+
+    h2 {
+      color: #4b6cb7;
+      margin-top: 0;
+      font-size: 18px;
+    }
+
+    label {
+      margin-top: 12px;
+      display: block;
+      font-weight: bold;
+      font-size: 13px;
+    }
+
+    select {
+      width: 100%;
+      padding: 6px;
+      margin-top: 6px;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 10px;
+      background: #4b6cb7;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    button:hover {
+      background: #395ab3;
+    }
+
+    #msg {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #555;
+    }
+  </style>
+</head>
+
+<body>
+  <h2>Configurações do AltSense</h2>
+
+  <label for="detailMode">Nível de detalhe:</label>
+  <select id="detailMode">
+    <option value="curto">Curto</option>
+    <option value="medio">Médio</option>
+    <option value="detalhado">Detalhado</option>
+    <option value="ultra">Ultra</option>
+  </select>
+
+  <button id="saveBtn">Salvar</button>
+  <div id="msg"></div>
+
+  <script src="settings.js"></script>
+</body>
+</html>

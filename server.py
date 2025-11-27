@@ -1,60 +1,127 @@
+import base64
+import io
+from PIL import Image
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import requests
-from io import BytesIO
-from PIL import Image
-import os
+import torch
+from transformers import (
+    AutoProcessor,
+    AutoModelForCausalLM,
+    M2M100ForConditionalGeneration,
+    M2M100Tokenizer
+)
 
-# Ajuste aqui para o caminho local do modelo BLIP
-LOCAL_MODEL_PATH = "./blip-image-captioning-base"
+# ===============================
+# 1) MODELO FLORENCE-2
+# ===============================
+FLORENCE_MODEL = "microsoft/Florence-2-large-ft"
 
-from transformers import BlipProcessor, BlipForConditionalGeneration
+print("🔄 Carregando Florence-2...")
+processor = AutoProcessor.from_pretrained(FLORENCE_MODEL, trust_remote_code=True)
+model = AutoModelForCausalLM.from_pretrained(FLORENCE_MODEL, trust_remote_code=True)
+print("✅ Florence-2 carregado!")
 
+
+# ===============================
+# 2) TRADUTOR M2M100 (EN → PT)
+# ===============================
+print("🔄 Carregando tradutor...")
+translator_name = "facebook/m2m100_418M"
+
+translator_tokenizer = M2M100Tokenizer.from_pretrained(translator_name)
+translator_model = M2M100ForConditionalGeneration.from_pretrained(translator_name)
+
+translator_tokenizer.src_lang = "en"
+translator_tokenizer.tgt_lang = "pt"
+print("✅ Tradutor carregado!")
+
+
+# ===============================
+# FUNÇÕES AUXILIARES
+# ===============================
+def decode_image(b64):
+    """Base64 → PIL.Image"""
+    return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+
+
+def florence_caption(img):
+    """Gera legenda em inglês usando Florence (obrigatório inglês)."""
+
+    # Florence exige texto **EXATAMENTE** = "<CAPTION>"
+    inputs = processor(
+        text="<CAPTION>",
+        images=img,
+        return_tensors="pt"
+    )
+
+    with torch.no_grad():
+        output = model.generate(
+            **inputs,
+            do_sample=False,
+            max_new_tokens=256,
+        )
+
+    caption_en = processor.batch_decode(output, skip_special_tokens=True)[0]
+    caption_en = caption_en.replace("<s>", "").replace("</s>", "").strip()
+
+    return caption_en
+
+
+def traduzir_para_pt(texto_en):
+    """Traduz EN → PT-BR usando M2M100."""
+    if not texto_en or texto_en.strip() == "":
+        return ""
+
+    encoded = translator_tokenizer(
+        texto_en,
+        return_tensors="pt"
+    )
+
+    generated_tokens = translator_model.generate(
+        **encoded,
+        forced_bos_token_id=translator_tokenizer.get_lang_id("pt")  # português
+    )
+
+    translated = translator_tokenizer.batch_decode(
+        generated_tokens,
+        skip_special_tokens=True
+    )[0]
+
+    return translated.strip()
+
+
+# ===============================
+# SERVIDOR FLASK
+# ===============================
 app = Flask(__name__)
-CORS(app)  # Libera todas as origens
+CORS(app)
 
-# Inicializa modelo e processor
-processor = BlipProcessor.from_pretrained(LOCAL_MODEL_PATH)
-model = BlipForConditionalGeneration.from_pretrained(LOCAL_MODEL_PATH)
-
-# Pasta temporária para fallback
-os.makedirs("temp_images", exist_ok=True)
-
-@app.route("/alt-text", methods=["POST"])
+@app.post("/alt-text")
 def alt_text():
     data = request.json
-    urls = data.get("urls", [])
-    results = {}
+    if not data or "image" not in data:
+        return jsonify({"error": "Envie { image: base64 }"}), 400
 
-    for url in urls:
-        try:
-            # Download da imagem com User-Agent
-            headers = {"User-Agent": "Mozilla/5.0"}
-            response = requests.get(url, headers=headers, timeout=10, verify=False)  # verify=False para SSL problemático
-            img_bytes = BytesIO(response.content)
-            img = Image.open(img_bytes).convert("RGB")
-        except Exception as e:
-            # Fallback: salva localmente
-            try:
-                filename = os.path.join("temp_images", os.path.basename(url))
-                with open(filename, "wb") as f:
-                    f.write(requests.get(url, headers={"User-Agent": "Mozilla/5.0"}, verify=False).content)
-                img = Image.open(filename).convert("RGB")
-            except Exception as e2:
-                results[url] = f"Erro: {e2}"
-                continue
+    try:
+        img = decode_image(data["image"])
+    except Exception as e:
+        return jsonify({"error": f"Imagem inválida: {e}"}), 400
 
-        try:
-            # Processa imagem com BLIP
-            inputs = processor(images=img, return_tensors="pt")
-            out = model.generate(**inputs)
-            alt = processor.decode(out[0], skip_special_tokens=True)
-            results[url] = alt
-        except Exception as e:
-            results[url] = f"Erro: {e}"
+    # 1) Gera descrição em inglês
+    raw_en = florence_caption(img)
 
-    return jsonify({"results": results})
+    # 2) Traduz para português
+    final_pt = traduzir_para_pt(raw_en)
+
+    if final_pt.strip() == "":
+        final_pt = "Não foi possível gerar a descrição."
+
+    return jsonify({
+        "description": final_pt,
+        "raw_english": raw_en
+    })
+
 
 if __name__ == "__main__":
-    print("Servidor rodando em http://127.0.0.1:5000")
-    app.run(debug=True)
+    print("🚀 Servidor iniciado em http://127.0.0.1:5000")
+    app.run(host="0.0.0.0", port=5000)

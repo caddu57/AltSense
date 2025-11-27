@@ -2,24 +2,21 @@
   "manifest_version": 3,
   "name": "AltSense",
   "version": "1.0",
-  "description": "Detecta imagens sem alt e gera automaticamente usando IA.",
-  "permissions": ["activeTab", "scripting"],
-  "background": {
-    "service_worker": "background.js"
-  },
+  "description": "Gera alt-text automático para imagens usando Florence-2.",
+
+  "permissions": ["activeTab", "scripting", "storage"],
+  "host_permissions": ["http://127.0.0.1:5000/*"],
+
   "action": {
-    "default_title": "AltSense",
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_title": "AltSense"
   },
+
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
-  ],
-  "icons": {
-    "16": "icon.png",
-    "48": "icon.png",
-    "128": "icon.png"
-  }
+  ]
 }

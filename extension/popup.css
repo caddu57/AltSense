@@ -1,0 +1,16 @@
+body {
+    width: 220px;
+    padding: 12px;
+    font-family: Arial, sans-serif;
+}
+
+h2 {
+    margin-top: 0;
+    font-size: 18px;
+}
+
+select, button {
+    width: 100%;
+    padding: 6px;
+    margin-top: 8px;
+}

@@ -1,1 +1,1 @@
-// background.js
+console.log("[AltSense] Background ativo.");
