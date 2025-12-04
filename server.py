@@ -1,127 +1,93 @@
-import base64
-import io
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from transformers import BlipProcessor, BlipForConditionalGeneration, AutoTokenizer, AutoModelForSeq2SeqLM
 from PIL import Image
-from flask import Flask, request, jsonify
-from flask_cors import CORS
 import torch
-from transformers import (
-    AutoProcessor,
-    AutoModelForCausalLM,
-    M2M100ForConditionalGeneration,
-    M2M100Tokenizer
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ===============================
-# 1) MODELO FLORENCE-2
+#  BLIP-Large (caption em inglês)
 # ===============================
-FLORENCE_MODEL = "microsoft/Florence-2-large-ft"
+MODEL = "Salesforce/blip-image-captioning-large"
+print("🔄 Carregando BLIP-Large...")
 
-print("🔄 Carregando Florence-2...")
-processor = AutoProcessor.from_pretrained(FLORENCE_MODEL, trust_remote_code=True)
-model = AutoModelForCausalLM.from_pretrained(FLORENCE_MODEL, trust_remote_code=True)
-print("✅ Florence-2 carregado!")
+processor = BlipProcessor.from_pretrained(MODEL)
+model = BlipForConditionalGeneration.from_pretrained(
+    MODEL,
+    torch_dtype=torch.float32,
+    use_safetensors=False
+)
+model.eval()
 
+# ===================================
+#  Tradutor leve (inglês → português)
+# ===================================
+print("🔄 Carregando tradutor EN→PT...")
 
-# ===============================
-# 2) TRADUTOR M2M100 (EN → PT)
-# ===============================
-print("🔄 Carregando tradutor...")
-translator_name = "facebook/m2m100_418M"
+tok = AutoTokenizer.from_pretrained("unicamp-dl/translation-en-pt-t5")
+translator = AutoModelForSeq2SeqLM.from_pretrained("unicamp-dl/translation-en-pt-t5")
 
-translator_tokenizer = M2M100Tokenizer.from_pretrained(translator_name)
-translator_model = M2M100ForConditionalGeneration.from_pretrained(translator_name)
-
-translator_tokenizer.src_lang = "en"
-translator_tokenizer.tgt_lang = "pt"
-print("✅ Tradutor carregado!")
-
-
-# ===============================
-# FUNÇÕES AUXILIARES
-# ===============================
-def decode_image(b64):
-    """Base64 → PIL.Image"""
-    return Image.open(io.BytesIO(base64.b64decode(b64))).convert("RGB")
+translator.eval()
 
 
-def florence_caption(img):
-    """Gera legenda em inglês usando Florence (obrigatório inglês)."""
-
-    # Florence exige texto **EXATAMENTE** = "<CAPTION>"
-    inputs = processor(
-        text="<CAPTION>",
-        images=img,
-        return_tensors="pt"
-    )
+# ===================================
+#     Função principal de caption
+# ===================================
+def generate_caption_en(image):
+    inputs = processor(images=image, return_tensors="pt")
 
     with torch.no_grad():
-        output = model.generate(
+        out = model.generate(
             **inputs,
-            do_sample=False,
-            max_new_tokens=256,
+            max_new_tokens=70,
+            num_beams=5
         )
 
-    caption_en = processor.batch_decode(output, skip_special_tokens=True)[0]
-    caption_en = caption_en.replace("<s>", "").replace("</s>", "").strip()
-
-    return caption_en
+    caption = processor.decode(out[0], skip_special_tokens=True)
+    return caption.strip()
 
 
-def traduzir_para_pt(texto_en):
-    """Traduz EN → PT-BR usando M2M100."""
-    if not texto_en or texto_en.strip() == "":
-        return ""
+def translate_to_pt(text):
+    encoded = tok(text, return_tensors="pt")
+    with torch.no_grad():
+        out = translator.generate(
+            **encoded,
+            max_new_tokens=80,
+            num_beams=5
+        )
+    return tok.decode(out[0], skip_special_tokens=True).strip()
 
-    encoded = translator_tokenizer(
-        texto_en,
-        return_tensors="pt"
-    )
-
-    generated_tokens = translator_model.generate(
-        **encoded,
-        forced_bos_token_id=translator_tokenizer.get_lang_id("pt")  # português
-    )
-
-    translated = translator_tokenizer.batch_decode(
-        generated_tokens,
-        skip_special_tokens=True
-    )[0]
-
-    return translated.strip()
-
-
-# ===============================
-# SERVIDOR FLASK
-# ===============================
-app = Flask(__name__)
-CORS(app)
-
-@app.post("/alt-text")
-def alt_text():
-    data = request.json
-    if not data or "image" not in data:
-        return jsonify({"error": "Envie { image: base64 }"}), 400
-
-    try:
-        img = decode_image(data["image"])
-    except Exception as e:
-        return jsonify({"error": f"Imagem inválida: {e}"}), 400
-
-    # 1) Gera descrição em inglês
-    raw_en = florence_caption(img)
-
-    # 2) Traduz para português
-    final_pt = traduzir_para_pt(raw_en)
-
-    if final_pt.strip() == "":
-        final_pt = "Não foi possível gerar a descrição."
-
-    return jsonify({
-        "description": final_pt,
-        "raw_english": raw_en
-    })
+def remove_repetition(text):
+    """
+    Remove repetições consecutivas de frases, como:
+    'X. X.' → 'X.'
+    """
+    parts = [p.strip() for p in text.split(".") if p.strip()]
+    cleaned = []
+    for p in parts:
+        if not cleaned or cleaned[-1].lower() != p.lower():
+            cleaned.append(p)
+    return ". ".join(cleaned) + "."
 
 
-if __name__ == "__main__":
-    print("🚀 Servidor iniciado em http://127.0.0.1:5000")
-    app.run(host="0.0.0.0", port=5000)
+
+@app.post("/caption")
+async def caption_endpoint(file: UploadFile = File(...)):
+    img = Image.open(file.file).convert("RGB")
+
+    caption_en = generate_caption_en(img)
+    caption_pt = remove_repetition(translate_to_pt(caption_en))
+
+
+    return {
+        "caption": caption_pt,
+        "caption_en": caption_en
+    }

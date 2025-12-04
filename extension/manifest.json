@@ -1,22 +1,26 @@
 {
   "manifest_version": 3,
-  "name": "AltSense",
+  "name": "AltSense — Gerador de ALT text",
   "version": "1.0",
-  "description": "Gera alt-text automático para imagens usando Florence-2.",
+  "description": "Gera texto alternativo automaticamente para imagens sem ALT nas páginas.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "http://localhost:8000/*"
+  ],
 
-  "permissions": ["activeTab", "scripting", "storage"],
-  "host_permissions": ["http://127.0.0.1:5000/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
 
   "action": {
     "default_popup": "popup.html",
-    "default_title": "AltSense"
+    "default_title": "Gerar ALT Text"
   },
 
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
+      "js": ["content.js"]
     }
   ]
 }

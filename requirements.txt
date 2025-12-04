@@ -1,9 +1,9 @@
-flask
-flask-cors
-pillow
-torch==2.2.2+cpu
-torchaudio==2.2.2+cpu
-torchvision==0.17.2+cpu
-transformers==4.46.1
-sentencepiece
-sacremoses
+fastapi
+uvicorn[standard]
+transformers==4.41.2
+Pillow
+python-multipart
+numpy<2
+
+torch==2.1.0+cpu
+--extra-index-url https://download.pytorch.org/whl/cpu

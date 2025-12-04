@@ -1,89 +1,45 @@
-console.log("[AltSense] Content script ativo.");
+console.log("[AltSense] content.js carregado");
 
-async function gerarAltParaImagem(base64, modo) {
-    try {
-        const response = await fetch("http://127.0.0.1:5000/alt-text", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ image: base64, mode: modo })
-        });
+chrome.runtime.onMessage.addListener(async (msg) => {
+    if (msg.action !== "scan_images") return;
 
-        if (!response.ok) {
-            console.error("[AltSense] Backend retornou erro:", response.status);
-            return null;
+    console.log("[AltSense] Iniciando scan...");
+
+    const imgs = [...document.querySelectorAll("img")];
+    const withoutAlt = imgs.filter(i => !i.alt || i.alt.trim() === "");
+
+    console.log("[AltSense] Imagens sem ALT:", withoutAlt);
+
+    for (const img of withoutAlt) {
+        const b64 = await toBase64(img.src);
+        if (!b64) {
+            console.log("[AltSense] Falha ao converter imagem.");
+            continue;
         }
 
-        const json = await response.json();
-        console.log("[AltSense] Resposta do backend:", json);
-        return json.description || null;
+        chrome.runtime.sendMessage(
+            { action: "caption", image: b64 },
+            (caption) => {
+                console.log("[AltSense] Caption recebido:", caption);
 
-    } catch (err) {
-        console.error("[AltSense] Erro ao conectar ao backend:", err);
-        return null;
-    }
-}
-
-
-// Converte imagem para base64, mas ignora imagens tainted
-function converterParaBase64(img) {
-    return new Promise((resolve, reject) => {
-        try {
-            const canvas = document.createElement("canvas");
-            canvas.width = img.naturalWidth;
-            canvas.height = img.naturalHeight;
-
-            const ctx = canvas.getContext("2d");
-
-            ctx.drawImage(img, 0, 0);
-
-            const dataUrl = canvas.toDataURL("image/jpeg");
-            resolve(dataUrl.split(",")[1]);
-
-        } catch (e) {
-            console.warn("[AltSense] Canvas tainted, ignorando imagem.");
-            reject(e);
-        }
-    });
-}
-
-async function processarPagina(modo) {
-    console.log("[AltSense] Iniciando processamento... modo:", modo);
-
-    const imagens = Array.from(document.querySelectorAll("img"));
-    console.log(`[AltSense] Encontradas ${imagens.length} imagens.`);
-
-    for (const img of imagens) {
-        try {
-            const base64 = await converterParaBase64(img)
-                .catch(() => null);
-
-            if (!base64) {
-                console.log("[AltSense] Imagem ignorada (tainted).");
-                continue;
+                if (caption) {
+                    img.alt = caption;
+                    img.setAttribute("data-altsense", "ok");
+                } else {
+                    console.warn("[AltSense] Sem caption.");
+                }
             }
-
-            const descricao = await gerarAltParaImagem(base64, modo);
-
-            if (descricao) {
-                img.alt = descricao;
-                console.log("[AltSense] ALT aplicado:", descricao);
-            } else {
-                console.log("[AltSense] Nenhuma descrição retornada.");
-            }
-
-        } catch (err) {
-            console.error("[AltSense] Erro ao processar imagem:", err);
-        }
-    }
-
-    console.log("[AltSense] Processamento FINALIZADO.");
-}
-
-
-// Listener principal
-chrome.runtime.onMessage.addListener((msg) => {
-    if (msg.action === "processar") {
-        console.log("[AltSense] Mensagem recebida do popup:", msg);
-        processarPagina(msg.modo || "medio");
+        );
     }
 });
+
+function toBase64(url) {
+    return fetch(url)
+        .then(r => r.blob())
+        .then(blob => new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.readAsDataURL(blob);
+        }))
+        .catch(() => null);
+}
