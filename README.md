@@ -1,43 +1,82 @@
-# AltSense
+# 📘 AltSense — Geração Automática de ALT Text com IA
 
-AltSense é uma extensão de navegador que detecta automaticamente imagens sem **alt text** em páginas da web e gera descrições automáticas usando inteligência artificial.
-## Funcionalidades
+Aumente a acessibilidade da web com um clique.
 
-- Detecta imagens sem alt text.
-- Gera descrições automáticas usando um modelo de visão computacional.
-- Fácil instalação como extensão de navegador.
-- Integração com backend hospedado (Flask).
+## 🧩 Sobre o Projeto
 
-## Instalação e uso
+AltSense é uma ferramenta composta por:
 
-1. Clone o repositório:
+🔌 Extensão Chrome — identifica imagens sem ALT text em qualquer página e gera descrições automaticamente.
+
+🧠 Backend FastAPI + BLIP-Large — usa modelos de Visão+Linguagem para gerar descrições de alta qualidade.
+
+🌎 Tradução/Refinamento PT-BR — todo output é limpo, objetivo e em português natural.
+
+O objetivo é melhorar a acessibilidade digital, permitindo que usuários e administradores de site adicionem ALT texts com apenas um clique.
+
+## 🚀 Funcionalidades
+- Extensão Chrome
+
+- Detecta automaticamente imagens sem alt-text
+- Envia imagens para o backend
+
+- Substitui/insere ALT text sem recarregar a página
+
+- Interface simples com um único botão: Gerar ALT texts
+
+- Backend
+
+- Recebe imagens (file upload)
+
+- Gera descrição com BLIP-Large
+
+- Refina a descrição (opcional)
+
+- Retorna resposta em JSON
+
+## 🧱 Arquitetura
+```bash
+┌──────────────────────────┐
+│     Extensão Chrome       │
+│  content.js / popup.js    │
+└──────────────┬───────────┘
+               │ fetch
+               ▼
+┌──────────────────────────┐
+│      FastAPI Backend      │
+│  /caption (POST upload)   │
+└──────────────┬───────────┘
+               │ model.generate
+               ▼
+┌──────────────────────────┐
+│     BLIP-Large (CPU)      │
+│  + refinamento PT-BR      │
+└──────────────────────────┘
+```
+## 🛠️ Instalação — Backend
+
+1) Clonar o repositório
 ```bash
 git clone https://github.com/caddu57/AltSense.git
 cd AltSense
 ```
-2. Crie um ambiente virtual (opcional, mas recomendado):
+2) Build do Docker
 ```bash 
-2. python -m venv venv
-# Linux/Mac
-source venv/bin/activate  
-# Windows
-venv\Scripts\activate
+docker build -t altsense-blip .
 ```
 
-3. Instale as dependências:
+3) Executar
 ```bash
-pip install -r requirements.txt
+docker run --rm -p 8000:8000 altsense-blip
 ```
 
-4. Inicie o servidor:
+Backend disponível em:
 ```bash
-python server.py
+http://localhost:8000/docs
 ```
 
-O servidor ficará disponível em:
-👉 http://127.0.0.1:5000
 
-## 🌐 Extensão do Navegador
+## 🧩 Instalação — Extensão Chrome
 1. Abra o Google Chrome (ou Microsoft Edge).
 2. Vá para:
 ```bash
@@ -51,28 +90,10 @@ chrome://extensions/
 
 6. Pronto ✅ — a extensão está ativa.
 
-## ▶️ Uso
-- Acesse qualquer página da web.
+## 🧠 Modelo Utilizado
 
-- A extensão detectará imagens sem alt text automaticamente.
+- BLIP-Large (Salesforce/blip-image-captioning-large)
 
-- Cada imagem encontrada será enviada ao backend Flask.
+- Execução em CPU
 
-- O backend gera uma descrição com BLIP e retorna para a página.
-
-- O alt text é adicionado diretamente no código da imagem.
-
-## 🧪 Teste Manual da API
-Se quiser testar a API do backend sem a extensão, use PowerShell:
-```bash
-$body = @{ urls = @("https://i.imgur.com/dhJpv38.jpg") } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://127.0.0.1:5000/alt-text" -Method POST -Body $body -ContentType "application/json"
-```
-Resposta esperada:
-```bash
-{
-  "results": {
-    "https://i.imgur.com/dhJpv38.jpg": "Descrição gerada pelo modelo"
-  }
-}
-```
+- Refinamento em PT-BR automático
